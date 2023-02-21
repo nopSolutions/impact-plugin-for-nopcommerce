@@ -1,0 +1,11 @@
+﻿{
+  "Group": "Misc",
+  "FriendlyName": "Impact",
+  "SystemName": "Misc.Impact",
+  "Version": "1.00",
+  "SupportedVersions": [ "4.60" ],
+  "Author": "nopCommerce team",
+  "DisplayOrder": 1,
+  "FileName": "Nop.Plugin.Misc.Impact.dll",
+  "Description": "This plugin allows to sync with Impact. impact.com is more than just affiliate marketing. Diversify your partner mix to drive new revenue now."
+}

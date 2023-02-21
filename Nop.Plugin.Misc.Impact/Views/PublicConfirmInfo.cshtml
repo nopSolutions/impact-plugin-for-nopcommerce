@@ -1,0 +1,14 @@
+﻿<script asp-location="Footer">
+    $(document).ready(function() {
+        var t = ire('generateClickId', function (clickId) {
+            $.ajax({
+                cache: false,
+                type: 'POST',
+                url: '@Url.Action("SetClickId", "ImpactPublic")',
+                data: {
+                    'clickId': clickId
+                }            
+            });
+        });
+    });        
+</script>
