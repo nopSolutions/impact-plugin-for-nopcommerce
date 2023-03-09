@@ -4,12 +4,15 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Nop.Core.Domain.Customers;
+using Nop.Core.Domain.Discounts;
 using Nop.Core.Domain.Orders;
 using Nop.Core.Domain.Tax;
+using Nop.Data;
 using Nop.Services.Catalog;
 using Nop.Services.Common;
 using Nop.Services.Customers;
 using Nop.Services.Directory;
+using Nop.Services.Discounts;
 using Nop.Services.Orders;
 
 namespace Nop.Plugin.Misc.Impact.Services
@@ -21,38 +24,47 @@ namespace Nop.Plugin.Misc.Impact.Services
     {
         #region Fields
 
+        private readonly CustomerSettings _customerSettings;
         private readonly ICategoryService _categoryService;
         private readonly ICurrencyService _currencyService;
         private readonly ICustomerService _customerService;
+        private readonly IDiscountService _discountService;
         private readonly IGenericAttributeService _genericAttributeService;
         private readonly ImpactSettings _impactSettings;
         private readonly ImpactHttpClient _impactHttpClient;
         private readonly IOrderService _orderService;
         private readonly IProductService _productService;
+        private readonly IRepository<Discount> _discountRepository;
         private readonly IReturnRequestService _returnRequestService;
 
         #endregion
 
         #region Ctor
 
-        public ImpactService(ICategoryService categoryService,
+        public ImpactService(CustomerSettings customerSettings,
+            ICategoryService categoryService,
             ICurrencyService currencyService,
             ICustomerService customerService,
+            IDiscountService discountService,
             IGenericAttributeService genericAttributeService,
             ImpactSettings impactSettings,
             ImpactHttpClient impactHttpClient,
             IOrderService orderService,
             IProductService productService,
+            IRepository<Discount> discountRepository,
             IReturnRequestService returnRequestService)
         {
+            _customerSettings = customerSettings;
             _categoryService = categoryService;
             _currencyService = currencyService;
             _customerService = customerService;
+            _discountService = discountService;
             _genericAttributeService = genericAttributeService;
             _impactSettings = impactSettings;
             _impactHttpClient = impactHttpClient;
             _orderService = orderService;
             _productService = productService;
+            _discountRepository = discountRepository;
             _returnRequestService = returnRequestService;
         }
 
@@ -74,6 +86,12 @@ namespace Nop.Plugin.Misc.Impact.Services
             if (string.IsNullOrEmpty(clickId))
                 return;
 
+            var discount = 
+                _currencyService.ConvertCurrency(order.CustomerTaxDisplayType == TaxDisplayType.IncludingTax ?
+                    order.OrderSubTotalDiscountInclTax : order.OrderSubTotalDiscountExclTax, order.CurrencyRate);
+
+            discount += _currencyService.ConvertCurrency(order.OrderDiscount, order.CurrencyRate);
+
             var data = new Dictionary<string, string>
             {
                 //unique identifier for the event type (or action tracker) that tracked this conversion.Functionally identical to ActionTrackerId
@@ -89,9 +107,10 @@ namespace Nop.Plugin.Misc.Impact.Services
                 //your unique identifier for the order associated with this conversion
                 ["OrderId"] = order.CustomOrderNumber,
                 //currency code
-                ["CurrencyCode"] = order.CustomerCurrencyCode
+                ["CurrencyCode"] = order.CustomerCurrencyCode,
+                ["OrderDiscount"] = discount.ToString("0.00", CultureInfo.InvariantCulture)
             };
-
+            
             var orderItems = await _orderService.GetOrderItemsAsync(order.Id);
             var products =
                 (await _productService.GetProductsByIdsAsync(orderItems.Select(p => p.ProductId).ToArray()))
@@ -110,15 +129,31 @@ namespace Nop.Plugin.Misc.Impact.Services
                     item.PriceInclTax : item.PriceExclTax, order.CurrencyRate);
 
                 data[$"ItemSku{i}"] = string.IsNullOrEmpty(sku) ? item.ProductId.ToString() : sku;
+                data[$"ItemName{i}"] = product.Name;
                 data[$"ItemCategory{i}"] = category?.Name ?? "No category";
-                data[$"ItemSubTotal{i}"] = subTotal.ToString(CultureInfo.InvariantCulture);
+                data[$"ItemSubTotal{i}"] = subTotal.ToString("0.00", CultureInfo.InvariantCulture);
                 data[$"ItemQuantity{i}"] = item.Quantity.ToString();
             }
 
-            await _impactHttpClient.SendRequestAsync("Conversions", HttpMethod.Post, data);
-
-            //clear ClickId value
             var customer = await _customerService.GetCustomerByIdAsync(order.CustomerId);
+
+            //order discount coupon
+            var appliedDiscounts = await _discountService.GetAllDiscountUsageHistoryAsync(orderId: order.Id);
+
+            var appliedDiscountCouponCodes =
+                (await _discountRepository.GetByIdsAsync(appliedDiscounts.Select(duh => duh.DiscountId).ToArray()))
+                .Where(d => d.RequiresCouponCode).Select(p => p.CouponCode).ToList();
+
+            if (appliedDiscountCouponCodes.Any())
+                data["OrderPromoCode"] = string.Join(", ", appliedDiscountCouponCodes);
+
+            //customer IP address
+            if (_customerSettings.StoreIpAddresses && !string.IsNullOrEmpty(customer.LastIpAddress))
+                data["IpAddress"] = customer.LastIpAddress;
+
+            await _impactHttpClient.SendRequestAsync("Conversions", HttpMethod.Post, data);
+            
+            //clear ClickId value
             await _genericAttributeService.SaveAttributeAsync<string>(customer, ImpactDefaults.ClickIdAttributeName, null);
         }
 
