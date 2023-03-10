@@ -113,7 +113,7 @@ namespace Nop.Plugin.Misc.Impact.Services
             
             var orderItems = await _orderService.GetOrderItemsAsync(order.Id);
             var products =
-                (await _productService.GetProductsByIdsAsync(orderItems.Select(p => p.ProductId).ToArray()))
+                (await _productService.GetProductsByIdsAsync(orderItems.Select(p => p.ProductId).Distinct().ToArray()))
                 .ToDictionary(p => p.Id, p => p);
 
             for (var i = 1; i <= orderItems.Count; i++)
