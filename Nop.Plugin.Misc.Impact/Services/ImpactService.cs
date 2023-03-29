@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using Nop.Core.Domain.Customers;
 using Nop.Core.Domain.Discounts;
 using Nop.Core.Domain.Orders;
-using Nop.Core.Domain.Tax;
 using Nop.Data;
 using Nop.Services.Catalog;
 using Nop.Services.Common;
@@ -87,8 +86,7 @@ namespace Nop.Plugin.Misc.Impact.Services
                 return;
 
             var discount = 
-                _currencyService.ConvertCurrency(order.CustomerTaxDisplayType == TaxDisplayType.IncludingTax ?
-                    order.OrderSubTotalDiscountInclTax : order.OrderSubTotalDiscountExclTax, order.CurrencyRate);
+                _currencyService.ConvertCurrency(order.OrderSubTotalDiscountExclTax, order.CurrencyRate);
 
             discount += _currencyService.ConvertCurrency(order.OrderDiscount, order.CurrencyRate);
 
@@ -122,11 +120,10 @@ namespace Nop.Plugin.Misc.Impact.Services
                 var product = products[item.ProductId];
                 var sku = await _productService.FormatSkuAsync(product, item.AttributesXml);
                 var categoryMapping = (await _categoryService.GetProductCategoriesByProductIdAsync(item.ProductId)).FirstOrDefault();
-                var category = await _categoryService.GetCategoryByIdAsync(categoryMapping.CategoryId);
+                var category = await _categoryService.GetCategoryByIdAsync(categoryMapping?.CategoryId ?? 0);
 
                 var subTotal =
-                    _currencyService.ConvertCurrency(order.CustomerTaxDisplayType == TaxDisplayType.IncludingTax ?
-                    item.PriceInclTax : item.PriceExclTax, order.CurrencyRate);
+                    _currencyService.ConvertCurrency(item.PriceExclTax, order.CurrencyRate);
 
                 data[$"ItemSku{i}"] = string.IsNullOrEmpty(sku) ? item.ProductId.ToString() : sku;
                 data[$"ItemName{i}"] = product.Name;
@@ -181,7 +178,7 @@ namespace Nop.Plugin.Misc.Impact.Services
                 //unique identifier for the action tracker (or event type) that tracked the action
                 ["ActionTrackerId"] = _impactSettings.ActionTrackerId,
                 //your unique identifier for the order associated with this conversion
-                ["OrderId"] = order.CustomOrderNumber.ToString(),
+                ["OrderId"] = order.CustomOrderNumber,
                 ["Reason"] = "ORDER_UPDATE",
                 ["ItemSku"] = string.IsNullOrEmpty(sku) ? product.Id.ToString() : sku,
                 ["ItemQuantity"] = (returnRequestAvailability?.AvailableQuantityForReturn ?? 0).ToString()
