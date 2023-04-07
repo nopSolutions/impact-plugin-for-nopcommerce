@@ -1,5 +1,6 @@
 ﻿using System.Threading.Tasks;
 using Nop.Core.Domain.Orders;
+using Nop.Core.Domain.Payments;
 using Nop.Core.Events;
 using Nop.Services.Events;
 
@@ -10,7 +11,9 @@ namespace Nop.Plugin.Misc.Impact.Services
     /// </summary>
     public class EventConsumer :
         IConsumer<OrderPaidEvent>,
-        IConsumer<EntityUpdatedEvent<ReturnRequest>>
+        IConsumer<EntityUpdatedEvent<ReturnRequest>>,
+        IConsumer<EntityUpdatedEvent<Order>>,
+        IConsumer<OrderStatusChangedEvent>
     {
         #region Fields
 
@@ -51,6 +54,37 @@ namespace Nop.Plugin.Misc.Impact.Services
                 return;
 
             await _impactService.SendActionsAsync(entity);
+        }
+
+        /// <summary>
+        /// Handle event
+        /// </summary>
+        /// <param name="eventMessage">Event</param>
+        /// <returns>A task that represents the asynchronous operation</returns>
+        public async Task HandleEventAsync(OrderStatusChangedEvent eventMessage)
+        {
+            var order = eventMessage.Order;
+
+            if (eventMessage.PreviousOrderStatus == order.OrderStatus)
+                return;
+
+            if(order.PaymentStatus == PaymentStatus.Paid)
+                await _impactService.SendActionsAsync(order);
+        }
+
+        /// <summary>
+        /// Handle event
+        /// </summary>
+        /// <param name="eventMessage">Event</param>
+        /// <returns>A task that represents the asynchronous operation</returns>
+        public async Task HandleEventAsync(EntityUpdatedEvent<Order> eventMessage)
+        {
+            var order = eventMessage.Entity;
+
+            if (!order.Deleted || order.OrderStatus == OrderStatus.Cancelled || order.PaymentStatus != PaymentStatus.Paid)
+                return;
+
+            await _impactService.SendActionsAsync(order);
         }
 
         #endregion

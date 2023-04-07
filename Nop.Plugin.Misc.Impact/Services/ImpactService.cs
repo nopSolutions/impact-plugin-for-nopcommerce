@@ -69,6 +69,32 @@ namespace Nop.Plugin.Misc.Impact.Services
 
         #endregion
 
+        #region Utils
+
+        private async Task SendActionsAsync(Order order, OrderItem orderItem, int newCount = 0)
+        {
+            if (!_impactSettings.Enabled)
+                return;
+
+            var product = await _orderService.GetProductByOrderItemIdAsync(orderItem.Id);
+            var sku = await _productService.FormatSkuAsync(product, orderItem.AttributesXml);
+
+            var data = new Dictionary<string, string>
+            {
+                //unique identifier for the action tracker (or event type) that tracked the action
+                ["ActionTrackerId"] = _impactSettings.ActionTrackerId,
+                //your unique identifier for the order associated with this conversion
+                ["OrderId"] = order.CustomOrderNumber,
+                ["Reason"] = "ORDER_UPDATE",
+                ["ItemSku"] = string.IsNullOrEmpty(sku) ? product.Id.ToString() : sku,
+                ["ItemQuantity"] = newCount.ToString()
+            };
+
+            await _impactHttpClient.SendRequestAsync("Actions", HttpMethod.Put, data);
+        }
+
+        #endregion
+
         #region Methods
 
         /// <summary>
@@ -166,25 +192,31 @@ namespace Nop.Plugin.Misc.Impact.Services
 
             var order = await _orderService.GetOrderByOrderItemAsync(returnRequest.OrderItemId);
 
+            if(order == null)
+                return;
+
             var returnRequestAvailability =
                 (await _returnRequestService.GetReturnRequestAvailabilityAsync(order.Id)).ReturnableOrderItems
                 .FirstOrDefault(p => p.OrderItem.Id == returnRequest.OrderItemId);
 
-            var product = await _orderService.GetProductByOrderItemIdAsync(returnRequest.OrderItemId);
-            var sku = await _productService.FormatSkuAsync(product, returnRequestAvailability?.OrderItem?.AttributesXml);
+            if (returnRequestAvailability == null) 
+                return;
 
-            var data = new Dictionary<string, string>
-            {
-                //unique identifier for the action tracker (or event type) that tracked the action
-                ["ActionTrackerId"] = _impactSettings.ActionTrackerId,
-                //your unique identifier for the order associated with this conversion
-                ["OrderId"] = order.CustomOrderNumber,
-                ["Reason"] = "ORDER_UPDATE",
-                ["ItemSku"] = string.IsNullOrEmpty(sku) ? product.Id.ToString() : sku,
-                ["ItemQuantity"] = (returnRequestAvailability?.AvailableQuantityForReturn ?? 0).ToString()
-            };
+            await SendActionsAsync(order, returnRequestAvailability.OrderItem,
+                returnRequestAvailability.AvailableQuantityForReturn);
+        }
 
-            await _impactHttpClient.SendRequestAsync("Actions", HttpMethod.Put, data);
+        /// <summary>
+        /// Edit conversion
+        /// </summary>
+        /// <returns>A task that represents the asynchronous operation</returns>
+        public async Task SendActionsAsync(Order order)
+        {
+            if (!_impactSettings.Enabled)
+                return;
+
+            foreach (var orderItem in await _orderService.GetOrderItemsAsync(order.Id)) 
+                await SendActionsAsync(order, orderItem);
         }
 
         #endregion
