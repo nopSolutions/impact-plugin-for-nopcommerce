@@ -68,7 +68,7 @@ namespace Nop.Plugin.Misc.Impact.Services
             if (eventMessage.PreviousOrderStatus == order.OrderStatus)
                 return;
 
-            if(order.PaymentStatus == PaymentStatus.Paid)
+            if(order.PaymentStatus == PaymentStatus.Paid && order.OrderStatus == OrderStatus.Cancelled)
                 await _impactService.SendActionsAsync(order);
         }
 
