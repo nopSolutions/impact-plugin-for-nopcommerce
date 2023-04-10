@@ -12,7 +12,7 @@ namespace Nop.Plugin.Misc.Impact.Services
     public class EventConsumer :
         IConsumer<OrderPaidEvent>,
         IConsumer<EntityUpdatedEvent<ReturnRequest>>,
-        IConsumer<EntityUpdatedEvent<Order>>,
+        IConsumer<EntityDeletedEvent<Order>>,
         IConsumer<OrderStatusChangedEvent>
     {
         #region Fields
@@ -77,11 +77,11 @@ namespace Nop.Plugin.Misc.Impact.Services
         /// </summary>
         /// <param name="eventMessage">Event</param>
         /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task HandleEventAsync(EntityUpdatedEvent<Order> eventMessage)
+        public async Task HandleEventAsync(EntityDeletedEvent<Order> eventMessage)
         {
             var order = eventMessage.Entity;
 
-            if (!order.Deleted || order.OrderStatus == OrderStatus.Cancelled || order.PaymentStatus != PaymentStatus.Paid)
+            if (order.OrderStatus == OrderStatus.Cancelled || order.PaymentStatus != PaymentStatus.Paid)
                 return;
 
             await _impactService.SendActionsAsync(order);
