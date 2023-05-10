@@ -76,6 +76,10 @@ namespace Nop.Plugin.Misc.Impact.Services
             if (!_impactSettings.Enabled)
                 return;
 
+            var clickId = await _genericAttributeService.GetAttributeAsync<string>(order, ImpactDefaults.ClickIdAttributeName);
+            if (string.IsNullOrEmpty(clickId))
+                return;
+
             var product = await _orderService.GetProductByOrderItemIdAsync(orderItem.Id);
             var sku = await _productService.FormatSkuAsync(product, orderItem.AttributesXml);
 
@@ -175,8 +179,9 @@ namespace Nop.Plugin.Misc.Impact.Services
                 data["IpAddress"] = customer.LastIpAddress;
 
             await _impactHttpClient.SendRequestAsync("Conversions", HttpMethod.Post, data);
-            
-            //clear ClickId value
+
+            //move ClickId value to the order
+            await _genericAttributeService.SaveAttributeAsync(order, ImpactDefaults.ClickIdAttributeName, clickId);
             await _genericAttributeService.SaveAttributeAsync<string>(customer, ImpactDefaults.ClickIdAttributeName, null);
         }
 
